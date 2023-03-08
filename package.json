@@ -1,0 +1,21 @@
+{
+  "name": "vue",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "swc src -d lib",
+    "build:watch": "swc src -d lib -w"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@antfu/eslint-config": "^0.36.0",
+    "@swc/cli": "^0.1.62",
+    "@swc/core": "^1.3.38",
+    "chokidar": "^3.5.3",
+    "eslint": "^8.35.0",
+    "typescript": "^4.9.5"
+  }
+}
