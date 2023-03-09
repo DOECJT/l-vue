@@ -1,79 +1,76 @@
-interface VElement {
-  tag: string
-  props: { [prop: string]: any }
-  children: VNode[] | string
+interface Effect {
+  (...args: unknown[]): unknown
+}
+interface EffectFn {
+  (...args: unknown[]): unknown
+  deps: EffectStore[]
 }
 
-interface VComponent {
-  tag: () => VElement
+let activeEffect: EffectFn | undefined
+type EffectStore = Set<EffectFn>
+type PropStore = Map<PropertyKey, EffectStore>
+const bucket = new WeakMap<object, PropStore>()
+
+function track<T extends Record<PropertyKey, any>>(target: T, key: PropertyKey) {
+  if (!activeEffect)
+    return
+
+  let propStore = bucket.get(target)
+  if (!propStore)
+    bucket.set(target, propStore = new Map())
+
+  let effectStore = propStore.get(key)
+  if (!effectStore)
+    propStore.set(key, effectStore = new Set())
+
+  effectStore.add(activeEffect)
+  propStore.set(key, effectStore)
+  activeEffect.deps.push(effectStore)
 }
 
-type VNode = VElement | VComponent
+function trigger<T extends Record<PropertyKey, any>>(target: T, key: PropertyKey) {
+  const propStore = bucket.get(target)
+  if (!propStore)
+    return
 
-function isElement(vnode: VNode): vnode is VElement {
-  return typeof vnode.tag === 'string'
-}
-function mountElement(vnode: VElement, root: Element | null) {
-  const el = document.createElement(vnode.tag)
+  const effectStore = propStore.get(key)
+  if (!effectStore)
+    return
 
-  // props
-  for (const prop in vnode.props) {
-    if (prop.startsWith('on')) {
-      const eventName = prop.slice(2).toLowerCase()
-      const handler = vnode.props[prop]
-      el.addEventListener(eventName, handler)
-    }
-  }
+  const runStore: EffectStore = new Set()
+  effectStore.forEach(effect => runStore.add(effect))
 
-  // children
-  if (typeof vnode.children === 'string') {
-    const text = document.createTextNode(vnode.children)
-    el.appendChild(text)
-  }
-  else {
-    vnode.children.forEach((child) => {
-      render(child, el)
-    })
-  }
-
-  root && root.appendChild(el)
+  runStore.forEach(effect => effect())
 }
 
-function isComponent(vnode: VNode): vnode is VComponent {
-  return typeof vnode.tag === 'function'
-}
-function mountComponent(vnode: VComponent, root: Element | null) {
-  const content = vnode.tag()
+export function observe<T extends Record<PropertyKey, any>>(data: T) {
+  return new Proxy(data, {
+    get(target, key) {
+      track(target, key)
 
-  render(content, root)
-}
-
-function render<T extends VNode>(vnode: T, root: Element | null) {
-  if (isElement(vnode))
-    mountElement(vnode, root)
-  else
-    mountComponent(vnode, root)
-}
-
-const root = document.querySelector('#app')
-const vnode: VNode = {
-  tag: 'button',
-  props: {
-    onClick: () => alert('hello'),
-  },
-  children: 'click me',
-}
-const App = (): VElement => ({
-  tag: 'div',
-  props: {
-    onClick: () => {
-      console.log('xixi')
+      return target[key]
     },
-  },
-  children: 'Hello, world!',
-})
-const app: VNode = {
-  tag: App,
+    set(target, key, newValue) {
+      (target as Record<PropertyKey, any>)[key] = newValue
+
+      trigger(target, key)
+
+      return true
+    },
+  })
 }
-// render(vnode, root)
-render(app, root)
+
+export function effect(fn: Effect) {
+  const effectFn: EffectFn = () => {
+    effectFn.deps.forEach(effectStore => effectStore.clear())
+    effectFn.deps = []
+
+    activeEffect = effectFn
+
+    fn()
+  }
+
+  effectFn.deps = []
+
+  effectFn()
+}
