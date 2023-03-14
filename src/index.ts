@@ -6,6 +6,7 @@ interface EffectFn {
   deps: EffectStore[]
 }
 
+const effectStack: EffectFn[] = []
 let activeEffect: EffectFn | undefined
 type EffectStore = Set<EffectFn>
 type PropStore = Map<PropertyKey, EffectStore>
@@ -38,9 +39,14 @@ function trigger<T extends Record<PropertyKey, any>>(target: T, key: PropertyKey
     return
 
   const runStore: EffectStore = new Set()
-  effectStore.forEach(effect => runStore.add(effect))
+  effectStore.forEach((effectFn) => {
+    if (effectFn === activeEffect)
+      return
 
-  runStore.forEach(effect => effect())
+    runStore.add(effectFn)
+  })
+
+  runStore.forEach(effectFn => effectFn())
 }
 
 export function observe<T extends Record<PropertyKey, any>>(data: T) {
@@ -60,14 +66,21 @@ export function observe<T extends Record<PropertyKey, any>>(data: T) {
   })
 }
 
+function cleanup(effectFn: EffectFn) {
+  effectFn.deps.forEach(effectStore => effectStore.delete(effectFn))
+  effectFn.deps = []
+}
 export function effect(fn: Effect) {
   const effectFn: EffectFn = () => {
-    effectFn.deps.forEach(effectStore => effectStore.clear())
-    effectFn.deps = []
+    cleanup(effectFn)
 
-    activeEffect = effectFn
+    effectStack.push(effectFn)
+    activeEffect = effectStack[effectStack.length - 1]
 
     fn()
+
+    effectStack.pop()
+    activeEffect = effectStack[effectStack.length - 1]
   }
 
   effectFn.deps = []
